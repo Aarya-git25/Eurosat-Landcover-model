@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EuroSAT — Land Use Classifier</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:       #08100d;
+    --surface:  #101c16;
+    --border:   #1e3326;
+    --green:    #3ddc84;
+    --green2:   #25a35e;
+    --mint:     #a8f0c6;
+    --gold:     #f0c060;
+    --muted:    #5a7a66;
+    --text:     #e8f5ee;
+    --text2:    #8fb89d;
+    --radius:   12px;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Subtle grid bg */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(61,220,132,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(61,220,132,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    position: relative; z-index: 1;
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 0 24px 80px;
+  }
+
+  /* ── Header ── */
+  header {
+    padding: 40px 0 32px;
+    display: flex;
+    align-items: flex-end;
+    gap: 20px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 40px;
+  }
+  .header-icon {
+    width: 52px; height: 52px;
+    background: var(--green);
+    border-radius: 14px;
+    display: grid; place-items: center;
+    font-size: 26px;
+    flex-shrink: 0;
+  }
+  header h1 {
+    font-family: 'Space Mono', monospace;
+    font-size: 1.6rem;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    line-height: 1;
+  }
+  header h1 span { color: var(--green); }
+  header p {
+    font-size: 0.82rem;
+    color: var(--text2);
+    margin-top: 5px;
+    letter-spacing: 0.3px;
+  }
+  .badge {
+    margin-left: auto;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.72rem;
+    color: var(--green);
+    background: rgba(61,220,132,0.1);
+    border: 1px solid rgba(61,220,132,0.25);
+    padding: 6px 12px;
+    border-radius: 6px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  /* ── Main grid ── */
+  .main-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+  @media (max-width: 640px) {
+    .main-grid { grid-template-columns: 1fr; }
+  }
+
+  /* ── Card ── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+  }
+  .card-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 16px;
+  }
+
+  /* ── Drop zone ── */
+  .dropzone {
+    border: 2px dashed var(--border);
+    border-radius: 10px;
+    min-height: 260px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    text-align: center;
+    padding: 24px;
+    position: relative;
+    overflow: hidden;
+  }
+  .dropzone:hover, .dropzone.drag-over {
+    border-color: var(--green2);
+    background: rgba(61,220,132,0.04);
+  }
+  .dropzone.has-image {
+    border-style: solid;
+    border-color: var(--green2);
+    padding: 0;
+  }
+  .dropzone-icon {
+    font-size: 2.4rem;
+    opacity: 0.4;
+  }
+  .dropzone-text {
+    font-size: 0.85rem;
+    color: var(--text2);
+    max-width: 200px;
+  }
+  .dropzone-text strong {
+    color: var(--green);
+    display: block;
+    font-size: 0.95rem;
+    margin-bottom: 4px;
+  }
+  .dropzone-sub {
+    font-size: 0.72rem;
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+  }
+  #preview-img {
+    width: 100%; height: 100%;
+    object-fit: cover;
+    border-radius: 8px;
+    display: none;
+    min-height: 260px;
+  }
+  #file-input { display: none; }
+
+  /* ── Analyze button ── */
+  #analyze-btn {
+    width: 100%;
+    margin-top: 14px;
+    padding: 14px;
+    background: var(--green);
+    color: #08100d;
+    border: none;
+    border-radius: 8px;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.85rem;
+    font-weight: 700;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  #analyze-btn:hover:not(:disabled) {
+    background: var(--mint);
+  }
+  #analyze-btn:active:not(:disabled) { transform: scale(0.98); }
+  #analyze-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  .spinner {
+    width: 16px; height: 16px;
+    border: 2px solid rgba(0,0,0,0.2);
+    border-top-color: #000;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    display: none;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Result panel ── */
+  #result-panel { display: none; }
+
+  .prediction-hero {
+    background: linear-gradient(135deg, rgba(61,220,132,0.12), rgba(37,163,94,0.06));
+    border: 1px solid rgba(61,220,132,0.2);
+    border-radius: 10px;
+    padding: 20px;
+    text-align: center;
+    margin-bottom: 20px;
+  }
+  .prediction-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--green);
+    margin-bottom: 8px;
+  }
+  .prediction-class {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 6px;
+  }
+  .prediction-conf {
+    font-family: 'Space Mono', monospace;
+    font-size: 1.1rem;
+    color: var(--gold);
+    font-weight: 700;
+  }
+
+  /* ── Bars ── */
+  .bars-title {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.62rem;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 12px;
+  }
+  .bar-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 9px;
+    opacity: 0;
+    transform: translateX(-8px);
+    animation: slideIn 0.3s forwards;
+  }
+  @keyframes slideIn {
+    to { opacity: 1; transform: translateX(0); }
+  }
+  .bar-name {
+    font-size: 0.78rem;
+    color: var(--text2);
+    width: 150px;
+    flex-shrink: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .bar-name.top { color: var(--green); font-weight: 600; }
+  .bar-track {
+    flex: 1;
+    height: 6px;
+    background: var(--border);
+    border-radius: 99px;
+    overflow: hidden;
+  }
+  .bar-fill {
+    height: 100%;
+    border-radius: 99px;
+    background: var(--green2);
+    transition: width 0.6s cubic-bezier(0.4,0,0.2,1);
+    width: 0;
+  }
+  .bar-fill.top { background: var(--green); }
+  .bar-pct {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--text2);
+    width: 42px;
+    text-align: right;
+    flex-shrink: 0;
+  }
+  .bar-pct.top { color: var(--gold); }
+
+  /* ── Class grid ── */
+  .class-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px;
+    margin-top: 20px;
+  }
+  .class-chip {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 4px;
+    text-align: center;
+    font-size: 0.65rem;
+    color: var(--muted);
+    transition: all 0.2s;
+  }
+  .class-chip.active {
+    border-color: var(--green);
+    color: var(--green);
+    background: rgba(61,220,132,0.08);
+  }
+  .class-chip .chip-pct {
+    display: block;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.7rem;
+    margin-top: 3px;
+    color: var(--text2);
+  }
+  .class-chip.active .chip-pct { color: var(--gold); }
+
+  /* ── Empty state ── */
+  .empty-state {
+    min-height: 260px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    color: var(--muted);
+    text-align: center;
+  }
+  .empty-state .empty-icon { font-size: 2.5rem; opacity: 0.25; }
+  .empty-state p { font-size: 0.82rem; }
+
+  /* ── Footer info ── */
+  .info-strip {
+    margin-top: 28px;
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .info-tag {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--muted);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    padding: 5px 10px;
+    border-radius: 6px;
+  }
+  .info-tag span { color: var(--text2); }
+
+  /* ── Error toast ── */
+  #error-msg {
+    display: none;
+    background: rgba(240,80,80,0.12);
+    border: 1px solid rgba(240,80,80,0.3);
+    color: #f08080;
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 0.82rem;
+    margin-top: 12px;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <div class="header-icon">🛰️</div>
+    <div>
+      <h1>Euro<span>SAT</span></h1>
+      <p>Satellite Land Use Classifier</p>
+    </div>
+    <div class="badge" id="acc-badge">Loading…</div>
+  </header>
+
+  <div class="main-grid">
+
+    <!-- LEFT: Upload -->
+    <div>
+      <div class="card">
+        <div class="card-label">Input Image</div>
+
+        <div class="dropzone" id="dropzone">
+          <img id="preview-img" alt="preview">
+          <div id="drop-placeholder">
+            <div class="dropzone-icon">🖼️</div>
+            <div class="dropzone-text">
+              <strong>Drop satellite image here</strong>
+              or click to browse
+            </div>
+            <div class="dropzone-sub">PNG · JPG · JPEG · WEBP</div>
+          </div>
+        </div>
+
+        <input type="file" id="file-input" accept="image/*">
+        <button id="analyze-btn" disabled>
+          <div class="spinner" id="spinner"></div>
+          <span id="btn-text">⚡ CLASSIFY</span>
+        </button>
+        <div id="error-msg"></div>
+      </div>
+
+      <div class="info-strip" id="info-strip">
+        <div class="info-tag">Model <span>EuroSATNet</span></div>
+        <div class="info-tag">Input <span>64 × 64</span></div>
+        <div class="info-tag">Classes <span>10</span></div>
+        <div class="info-tag">Val Acc <span id="val-acc-tag">–</span></div>
+      </div>
+    </div>
+
+    <!-- RIGHT: Results -->
+    <div>
+      <div class="card">
+        <div class="card-label">Prediction</div>
+
+        <!-- Empty state -->
+        <div class="empty-state" id="empty-state">
+          <div class="empty-icon">📡</div>
+          <p>Upload an image to<br>see classification results</p>
+        </div>
+
+        <!-- Results (hidden until prediction) -->
+        <div id="result-panel">
+          <div class="prediction-hero">
+            <div class="prediction-label">Top Prediction</div>
+            <div class="prediction-class" id="pred-class">—</div>
+            <div class="prediction-conf" id="pred-conf">—</div>
+          </div>
+
+          <div class="bars-title">All Classes</div>
+          <div id="bars-container"></div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /main-grid -->
+
+  <!-- Class chips (full width) -->
+  <div class="card" style="margin-top:20px; display:none;" id="chips-card">
+    <div class="card-label">Probability Map</div>
+    <div class="class-grid" id="class-grid"></div>
+  </div>
+
+</div><!-- /container -->
+
+<script>
+const dropzone   = document.getElementById('dropzone');
+const fileInput  = document.getElementById('file-input');
+const previewImg = document.getElementById('preview-img');
+const dropPH     = document.getElementById('drop-placeholder');
+const analyzeBtn = document.getElementById('analyze-btn');
+const spinner    = document.getElementById('spinner');
+const btnText    = document.getElementById('btn-text');
+const errorMsg   = document.getElementById('error-msg');
+const emptyState = document.getElementById('empty-state');
+const resultPanel= document.getElementById('result-panel');
+const chipsCard  = document.getElementById('chips-card');
+
+// Load model info
+fetch('/info').then(r => r.json()).then(d => {
+  document.getElementById('acc-badge').textContent = `Val Acc ${d.val_acc}%`;
+  document.getElementById('val-acc-tag').textContent = `${d.val_acc}%`;
+});
+
+// Drag & drop
+dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag-over'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag-over'));
+dropzone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropzone.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file && file.type.startsWith('image/')) loadFile(file);
+});
+dropzone.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', () => {
+  if (fileInput.files[0]) loadFile(fileInput.files[0]);
+});
+
+function loadFile(file) {
+  const url = URL.createObjectURL(file);
+  previewImg.src = url;
+  previewImg.style.display = 'block';
+  dropPH.style.display = 'none';
+  dropzone.classList.add('has-image');
+  analyzeBtn.disabled = false;
+  analyzeBtn._file = file;
+  clearResults();
+}
+
+function clearResults() {
+  emptyState.style.display = 'flex';
+  resultPanel.style.display = 'none';
+  chipsCard.style.display = 'none';
+  errorMsg.style.display = 'none';
+}
+
+analyzeBtn.addEventListener('click', async () => {
+  const file = analyzeBtn._file;
+  if (!file) return;
+
+  // Loading state
+  analyzeBtn.disabled = true;
+  spinner.style.display = 'block';
+  btnText.textContent = 'CLASSIFYING…';
+  errorMsg.style.display = 'none';
+
+  const fd = new FormData();
+  fd.append('image', file);
+
+  try {
+    const res = await fetch('/predict', { method: 'POST', body: fd });
+    if (!res.ok) throw new Error('Server error');
+    const data = await res.json();
+    renderResults(data);
+  } catch(e) {
+    errorMsg.textContent = '⚠ Classification failed. Make sure the server is running.';
+    errorMsg.style.display = 'block';
+  } finally {
+    analyzeBtn.disabled = false;
+    spinner.style.display = 'none';
+    btnText.textContent = '⚡ CLASSIFY';
+  }
+});
+
+function renderResults(data) {
+  emptyState.style.display = 'none';
+  resultPanel.style.display = 'block';
+  chipsCard.style.display = 'block';
+
+  document.getElementById('pred-class').textContent = data.top_label;
+  document.getElementById('pred-conf').textContent = `${data.top_prob}% confident`;
+
+  // Bars — all classes sorted
+  const barsEl = document.getElementById('bars-container');
+  barsEl.innerHTML = '';
+  const sorted = data.class_names
+    .map((n, i) => ({ name: n, prob: data.all_probs[i] }))
+    .sort((a, b) => b.prob - a.prob);
+
+  sorted.forEach((item, idx) => {
+    const isTop = item.name === data.top_label;
+    const row = document.createElement('div');
+    row.className = 'bar-row';
+    row.style.animationDelay = `${idx * 40}ms`;
+    row.innerHTML = `
+      <div class="bar-name ${isTop ? 'top' : ''}">${item.name}</div>
+      <div class="bar-track">
+        <div class="bar-fill ${isTop ? 'top' : ''}" data-pct="${item.prob}"></div>
+      </div>
+      <div class="bar-pct ${isTop ? 'top' : ''}">${item.prob}%</div>
+    `;
+    barsEl.appendChild(row);
+  });
+
+  // Animate bars after paint
+  requestAnimationFrame(() => {
+    document.querySelectorAll('.bar-fill').forEach(el => {
+      el.style.width = el.dataset.pct + '%';
+    });
+  });
+
+  // Class chips
+  const grid = document.getElementById('class-grid');
+  grid.innerHTML = '';
+  data.class_names.forEach((name, i) => {
+    const chip = document.createElement('div');
+    chip.className = `class-chip ${name === data.top_label ? 'active' : ''}`;
+    chip.innerHTML = `${name}<span class="chip-pct">${data.all_probs[i]}%</span>`;
+    grid.appendChild(chip);
+  });
+}
+</script>
+</body>
+</html>
